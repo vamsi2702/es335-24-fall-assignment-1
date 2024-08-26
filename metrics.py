@@ -1,6 +1,6 @@
 from typing import Union
 import pandas as pd
-
+import numpy as np
 
 def accuracy(y_hat: pd.Series, y: pd.Series) -> float:
     """
@@ -13,34 +13,39 @@ def accuracy(y_hat: pd.Series, y: pd.Series) -> float:
     ensure that the function does not fail in corner cases.
     """
     assert y_hat.size == y.size
-    # TODO: Write here
-    pass
+    return np.sum(y_hat == y)/y.size
 
 
 def precision(y_hat: pd.Series, y: pd.Series, cls: Union[int, str]) -> float:
-    """
-    Function to calculate the precision
-    """
-    pass
+    # Precision = True Positives / (True Positives + False Positive)
+    assert y_hat.size == y.size
+    cls_series = pd.Series([cls] * len(y_hat))
+    true_positive = np.sum((y == y_hat) & (y == cls_series))
+    true_predicted = np.sum(y_hat == cls_series)
+    prec = float(true_positive / true_predicted) if true_predicted > 0 else 0.0
+    return prec
 
 
 def recall(y_hat: pd.Series, y: pd.Series, cls: Union[int, str]) -> float:
-    """
-    Function to calculate the recall
-    """
-    pass
+    # Recall = True Positives / (True Positives + False Negatives)
+    assert y_hat.size == y.size
+    cls_series = pd.Series([cls] * len(y_hat))
+    true_positive = np.sum((y == y_hat) & (y == cls_series))
+    true_actual = np.sum(y == cls_series)
+    rec = float(true_positive / true_actual) if true_actual > 0 else 0.0
+    return rec
 
 
 def rmse(y_hat: pd.Series, y: pd.Series) -> float:
     """
-    Function to calculate the root-mean-squared-error(rmse)
+    Calculates the root-mean-squared-error(rmse)
     """
-
-    pass
-
+    assert y_hat.size == y.size
+    return np.sqrt(np.mean((y_hat - y)**2))
 
 def mae(y_hat: pd.Series, y: pd.Series) -> float:
     """
-    Function to calculate the mean-absolute-error(mae)
+    Calculates the mean-absolute-error(mae)
     """
-    pass
+    assert y_hat.size == y.size
+    return np.mean(np.abs(y_hat - y))
