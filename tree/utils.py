@@ -1,104 +1,162 @@
+
 """
 You can add your own functions here according to your decision tree implementation.
 There is no restriction on following the below template, these functions are here to simply help you.
 """
 
-from typing import Literal
-import pandas as pd
 import numpy as np
+import pandas as pd
+
 def one_hot_encoding(X: pd.DataFrame) -> pd.DataFrame:
     """
-    Convert categorical variables into one-hot encoded vectors.
-    
-    Parameters:
-    - X: pd.DataFrame, input data
-    
-    Returns:
-    - pd.DataFrame, one-hot encoded data
+    Function to perform one hot encoding on the input data
     """
-    categorical_columns = X.select_dtypes(include=['object', 'category']).columns
-    return pd.get_dummies(X, columns=categorical_columns, drop_first=True)
+    return pd.get_dummies(X, drop_first=False, dtype=float)
+
 def check_ifreal(y: pd.Series) -> bool:
     """
     Function to check if the given series has real or discrete values
     """
-    try:
-        return any(y % 1 != 0)  # True if any value has a non-zero decimal part
-    except TypeError:
-        return False 
+    if y.dtype in  ['int8','int16','int32','int64','uint8','uint16','uint32','uint64','float16','float32','float64','float128']:
+        return True
+    elif (y.dtype=='object' or y.dtype == 'category'):
+        return False
+    else: 
+        return False
+
 
 def entropy(Y: pd.Series) -> float:
     """
-    Calculate entropy for a categorical variable.
-
-    Parameters:
-    - Y: pd.Series of categorical data
-
-    Returns:
-    - Entropy value
+    Function to calculate the entropy
     """
-    # Count the occurrences of each unique value in the series
-    value_counts = Y.value_counts()
+    probabilities = Y.value_counts(normalize=True).values
+    return -np.sum(probabilities * np.log2(probabilities + np.finfo(float).eps))
 
-    # Calculate the probabilities of each unique value
-    probabilities = value_counts / len(Y)
-
-    nonzero_probabilities = probabilities[probabilities > 0]
-
-    # Calculate entropy using the formula: H(S) = -p1*log2(p1) - p2*log2(p2) - ...
-    entropy_value = -np.sum(nonzero_probabilities * np.log2(nonzero_probabilities))
-
-    return entropy_value
 
 def gini_index(Y: pd.Series) -> float:
     """
     Function to calculate the gini index
     """
-    gini = 1
-    for value in np.unique(Y) :
-        p = (np.sum(Y == value))/(np.size(Y)) # prob of value in series
-        if p>0:
-          gini -= p**2
+    probabilities = Y.value_counts(normalize=True)
+    
+    # Calculate Gini index
+    gini = 1 - np.sum(probabilities ** 2)
+    
     return gini
 
-def information_gain(Y: pd.Series, attr: pd.Series, criterion: Literal["information_gain", "gini_index"]) -> float:
+def mse(Y:pd.Series)-> float:
+    return Y.var(ddof=0)
+
+def information_gain(Y: pd.Series, attr: pd.Series, criterion: str) -> float:
     """
-    Function to calculate the information gain
-    Y = target attr, attr = attr i am splitting on
+    Function to calculate the information gain using criterion (entropy, gini index or MSE)
+    """
+    attr = attr.sort_values()
+
+    # Compute the mean of consecutive elements
+    means = attr.rolling(window=2).mean().dropna()
+    
+    if check_ifreal(Y):
+        
+        assert (criterion in ["gini_index", "information_gain", "MSE"])       
+        if criterion == "MSE":
+            max_gain=0
+            value = 0
+            for i in means:
+                series1 = Y.loc[attr.loc[attr>=i].index]
+                series2 = Y.loc[attr[attr<i].index]
+                gainz = mse(Y) - (series1.size/attr.size )*mse(series1) - (series2.size/attr.size )*mse(series2)
+                if gainz>max_gain:
+                    max_gain = gainz
+                    value =i
+            return max_gain , value
+    elif not check_ifreal(Y):
+        assert (criterion in ["gini_index", "information_gain", "MSE"]) 
+        if criterion == "information_gain" :
+            max_gain=0
+            value = 0
+            for i in means:
+                series1 = Y.loc[attr.loc[attr>=i].index]
+                series2 = Y.loc[attr.loc[attr<i].index]
+                gainz = entropy(Y) - (series1.size/attr.size )*entropy(series1) - (series2.size/attr.size )*entropy(series2)
+                if gainz > max_gain:
+                    max_gain = gainz
+                    value = i
+            return max_gain ,value
+        elif criterion == "gini_index" :
+            max_gain=0
+            value = 0
+            for i in means:
+                series1 = Y.loc[attr.loc[attr>=i].index]
+                series2 = Y.loc[attr.loc[attr<i].index]
+                gainz = entropy(Y) - (series1.size/attr.size )*entropy(series1) - (series2.size/attr.size )*entropy(series2)
+                if gainz > max_gain:
+                    max_gain = gainz
+                    value = i
+            return max_gain ,value        
+        
+        
+
+
+def opt_split_attribute(X: pd.DataFrame, y: pd.Series, criterion, features: pd.Series):
+    """
+    Function to find the optimal attribute to split about.
+    If needed you can split this function into 2, one for discrete and one for real valued features.
+    You can also change the parameters of this function according to your implementation.
+
+    features: pd.Series is a list of all the attributes we have to split upon
+
+    return: attribute to split upon
     """
     
-    def compute_weighted_variance(Y, attr):
-        parent_var = np.var(Y)
-        mean_value = attr.mean()
-        group_var = [np.var(Y[attr <= mean_value]), np.var(Y[attr > mean_value])]
-        group_weight = [sum(attr <= mean_value) / len(Y), sum(attr > mean_value) / len(Y)]
-        return parent_var - sum(w * v for w, v in zip(group_weight, group_var))
+    # According to wheather the features are real or discrete valued and the criterion, find the attribute from the features series with the maximum information gain (entropy or varinace based on the type of output) or minimum gini index (discrete output).
+    best_split = {}
+    gains = np.array([np.array(information_gain(y, X[i], criterion)) for i in features])
+    # print(gains.shape)
+    best_split['best_feature_index'] = np.argmax(gains[:, 0])
+    best_split['best_feature'] = features[best_split['best_feature_index']]
+    best_split['max_info_gain'] = gains[best_split['best_feature_index'], 0]
+    best_split['threshold_value'] = gains[best_split['best_feature_index'], 1]
+
+    return best_split
     
-    parent_impurity = entropy(Y) if criterion == "information_gain" else gini_index(Y)
-    weighted_impurity = sum(
-        len(Y[attr == value]) / len(Y) * (entropy(Y[attr == value]) if criterion == "information_gain" else gini_index(Y[attr == value]))
-        for value in attr.unique()
-    )
-    return parent_impurity - weighted_impurity
+    pass
 
-def opt_split_attribute(X: pd.DataFrame, y: pd.Series, criterion: Literal["information_gain", "gini_index"], features: pd.Series):
-    max_gain = -float('inf') 
-    best_feature = None
 
-    for feature in features:
-        attr = X[feature]
-        gain = information_gain(y, attr, criterion)  
-        if gain > max_gain:
-            max_gain = gain
-            best_feature = feature
+def split_data(X: pd.DataFrame, y: pd.Series, attribute, value):
+    """
+    Funtion to split the data according to an attribute.
+    If needed you can split this function into 2, one for discrete and one for real valued features.
+    You can also change the parameters of this function according to your implementation.
 
-    return best_feature, max_gain
+    attribute: attribute/feature to split upon
+    value: value of that attribute to split upon
 
-def split_data(X: pd.DataFrame, y: pd.Series, attribute: str, value: any) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
-    mask = X[attribute] <= value
-    X_left = X[mask]
-    y_left = y[mask]
-    X_right = X[~mask]
-    y_right = y[~mask]
-    return X_left, y_left, X_right, y_right
+    return: splitted data(Input and output)
+    """
+
+    # Split the data based on a particular value of a particular attribute. You may use masking as a tool to split the data.
+    Left_Child_X = X[X[attribute] < value]
+    Right_Child_X = X[X[attribute] >= value]
+    Left_Child_y = y[X[attribute] < value]
+    Right_Child_y = y[X[attribute] >= value]
+    return [Left_Child_X, Left_Child_y,Right_Child_X, Right_Child_y]
+    pass
+
+
+class Node():
+    def __init__(self, feature_index=None, threshold=None, left_child=None, right_child=None, info_gain=None, value=None):
+
+        
+        self.feature_index = feature_index
+        self.threshold = threshold
+        self.left = left_child
+        self.right = right_child
+        self.info_gain = info_gain
+        self.value = value
+
+    def is_leaf(self):
+        return self.value is not None
+    
+
 
