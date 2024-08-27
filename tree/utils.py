@@ -1,12 +1,23 @@
 """
 You can add your own functions here according to your decision tree implementation.
-There is no restriction on following the below template, these fucntions are here to simply help you.
+There is no restriction on following the below template, these functions are here to simply help you.
 """
 
 from typing import Literal
 import pandas as pd
 import numpy as np
-
+def one_hot_encoding(X: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert categorical variables into one-hot encoded vectors.
+    
+    Parameters:
+    - X: pd.DataFrame, input data
+    
+    Returns:
+    - pd.DataFrame, one-hot encoded data
+    """
+    categorical_columns = X.select_dtypes(include=['object', 'category']).columns
+    return pd.get_dummies(X, columns=categorical_columns, drop_first=True)
 def check_ifreal(y: pd.Series) -> bool:
     """
     Function to check if the given series has real or discrete values
@@ -15,8 +26,6 @@ def check_ifreal(y: pd.Series) -> bool:
         return any(y % 1 != 0)  # True if any value has a non-zero decimal part
     except TypeError:
         return False 
-
-
 
 def entropy(Y: pd.Series) -> float:
     """
@@ -28,7 +37,6 @@ def entropy(Y: pd.Series) -> float:
     Returns:
     - Entropy value
     """
- 
     # Count the occurrences of each unique value in the series
     value_counts = Y.value_counts()
 
@@ -41,7 +49,6 @@ def entropy(Y: pd.Series) -> float:
     entropy_value = -np.sum(nonzero_probabilities * np.log2(nonzero_probabilities))
 
     return entropy_value
-    
 
 def gini_index(Y: pd.Series) -> float:
     """
@@ -53,7 +60,6 @@ def gini_index(Y: pd.Series) -> float:
         if p>0:
           gini -= p**2
     return gini
-
 
 def information_gain(Y: pd.Series, attr: pd.Series, criterion: Literal["information_gain", "gini_index"]) -> float:
     """
@@ -68,48 +74,14 @@ def information_gain(Y: pd.Series, attr: pd.Series, criterion: Literal["informat
         group_weight = [sum(attr <= mean_value) / len(Y), sum(attr > mean_value) / len(Y)]
         return parent_var - sum(w * v for w, v in zip(group_weight, group_var))
     
-    def compute_weighted_impurity(Y, attr, unique_attr, impurity_func):
-        parent_impurity = impurity_func(Y)
-        weighted_impurity = sum(
-            len(Y[attr == u_attr]) / len(Y) * impurity_func(Y[attr == u_attr]) 
-            for u_attr in unique_attr
-        )
-        return parent_impurity - weighted_impurity
+    parent_impurity = entropy(Y) if criterion == "information_gain" else gini_index(Y)
+    weighted_impurity = sum(
+        len(Y[attr == value]) / len(Y) * (entropy(Y[attr == value]) if criterion == "information_gain" else gini_index(Y[attr == value]))
+        for value in attr.unique()
+    )
+    return parent_impurity - weighted_impurity
 
-    is_real_attr = check_ifreal(attr)
-    is_real_output = check_ifreal(Y)
-    
-    if is_real_attr and is_real_output:
-        return compute_weighted_variance(Y, attr)
-
-    elif not is_real_attr and is_real_output:
-        parent_variance = np.var(Y)
-        unique_attr = np.unique(attr)
-        variance_diff = sum(
-            (np.var(Y[attr == u_attr]) * len(Y[attr == u_attr])) / len(Y)
-            for u_attr in unique_attr
-        )
-        return parent_variance - variance_diff
-
-    elif is_real_attr and not is_real_output:
-        impurity_func = entropy if criterion == "information_gain" else gini_index
-        parent_impurity = impurity_func(Y)
-        threshold = attr.mean()
-        subsets = [Y[attr <= threshold], Y[attr > threshold]]
-        weighted_impurity = sum(
-            (len(subset) / len(Y)) * impurity_func(subset) 
-            for subset in subsets
-        )
-        return parent_impurity - weighted_impurity
-
-    else:
-        impurity_func = entropy if criterion == "information_gain" else gini_index
-        unique_attr = np.unique(attr)
-        return compute_weighted_impurity(Y, attr, unique_attr, impurity_func)
-
-        
 def opt_split_attribute(X: pd.DataFrame, y: pd.Series, criterion: Literal["information_gain", "gini_index"], features: pd.Series):
-    
     max_gain = -float('inf') 
     best_feature = None
 
@@ -122,17 +94,11 @@ def opt_split_attribute(X: pd.DataFrame, y: pd.Series, criterion: Literal["infor
 
     return best_feature, max_gain
 
-
 def split_data(X: pd.DataFrame, y: pd.Series, attribute: str, value: any) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
-    
-    if check_ifreal(X[attribute]): # Real Input
-        mask = X[attribute] <= value
-    else: # Discrete Input
-        mask = X[attribute] == value    
-
+    mask = X[attribute] <= value
     X_left = X[mask]
     y_left = y[mask]
     X_right = X[~mask]
     y_right = y[~mask]
-
     return X_left, y_left, X_right, y_right
+
